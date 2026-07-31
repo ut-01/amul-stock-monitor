@@ -1,0 +1,31 @@
+{
+  "products": [
+    {
+      "name": "Amul High Protein Plain Lassi (Pack of 30)",
+      "url": "https://shop.amul.com/en/product/amul-high-protein-plain-lassi-200-ml-or-pack-of-30"
+    }
+  ],
+
+  "monitor": {
+    "startHour": 16,
+    "endHour": 20,
+    "intervalMinutes": 5,
+    "minJitterSeconds": 5,
+    "maxJitterSeconds": 8
+  },
+
+  "browser": {
+    "headless": true,
+    "profileDir": "./browser-data",
+    "timeout": 30000
+  },
+
+  "location": {
+    "pincode": "201301"
+  },
+
+  "logging": {
+    "enabled": true,
+    "directory": "./logs"
+  }
+}

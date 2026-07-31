@@ -1,0 +1,37 @@
+# amul-stock-monitor.service
+# paste this in `/etc/systemd/system/amul-stock-monitor.service`
+
+[Unit]
+Description=Amul Stock Monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# Change this
+User=ubuntu
+Group=ubuntu
+
+# Change this
+WorkingDirectory=/home/ubuntu/apps/amul-stock-monitor
+
+# Change this if node is elsewhere
+ExecStart=/home/ubuntu/.nvm/versions/node/v24.18.0/bin/node index.js
+
+Environment=NODE_ENV=production
+
+Restart=on-failure
+RestartSec=15
+
+TimeoutStopSec=30
+
+KillSignal=SIGINT
+
+LimitNOFILE=65535
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
