@@ -7,8 +7,8 @@
   ],
 
   "monitor": {
-    "startHour": 16,
-    "endHour": 20,
+    "startHour": 6,
+    "endHour": 12,
     "intervalMinutes": 5,
     "minJitterSeconds": 5,
     "maxJitterSeconds": 8
