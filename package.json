@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "start": "node index.js",
-    "init": "npm i; npx playwright install chromium; npx playwright install-deps chromium",
+    "initialize": "npm i; npx playwright install chromium; npx playwright install-deps chromium",
     "dev": "NODE_ENV=development node index.js"
   },
   "dependencies": {

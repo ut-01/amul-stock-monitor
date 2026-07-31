@@ -60,7 +60,7 @@ cd amul-stock-monitor
 One command Install dependencies.
 
 ```bash
-npm init
+npm run initialize
 ```
 
 (or alternatively) Manually Install dependencies.
