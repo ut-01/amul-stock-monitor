@@ -11,6 +11,7 @@ class Monitor {
     this.webhook = webhook;
 
     this.stopped = false;
+    this.checkCount = 0;
   }
 
   async initialize() {
@@ -22,7 +23,7 @@ class Monitor {
 
     await this.page.goto(this.product.url, {
       waitUntil: "domcontentloaded",
-      timeout: this.config.browser.timeout,
+      timeout: this.config.browser.operationTimeout,
     });
 
     this.logger.info(this.product.name, `URL: ${this.page.url()}`);
@@ -140,7 +141,18 @@ class Monitor {
   }
 
   async detectState() {
-    await this.page.waitForTimeout(1500);
+    await this.page.waitForTimeout(1000);
+
+    const currentUrl = this.page.url();
+
+    this.logger.info(this.product.name, `URL: ${currentUrl}`);
+
+    this.logger.info(this.product.name, `Title: ${await this.page.title()}`);
+
+    this.logger.info(
+      this.product.name,
+      `Ready: ${await this.page.evaluate(() => document.readyState)}`,
+    );
 
     const body = await this.page.locator("body").innerText();
 
@@ -195,12 +207,19 @@ class Monitor {
   }
 
   async check() {
+    this.checkCount++;
+    // Restart browser every 60 checks (~5 hours)
+    if (this.checkCount % 60 === 0) {
+      return "restart";
+    }
     this.logger.info(this.product.name, "Refreshing page...");
 
-    await this.page.goto(this.product.url, {
-      waitUntil: "domcontentloaded",
-      timeout: this.config.browser.timeout,
+    await this.page.reload({
+      waitUntil: "commit",
+      timeout: 10000,
     });
+
+    await this.page.waitForLoadState("domcontentloaded");
 
     this.logger.info(this.product.name, `Current URL: ${this.page.url()}`);
 
@@ -287,7 +306,11 @@ class Monitor {
 
         await this.captureDiagnostics("exception");
 
-        await this.recover();
+        await this.page.close();
+
+        this.page = await this.page.context().newPage();
+
+        await this.initialize();
       }
 
       const delay = this.nextDelay();

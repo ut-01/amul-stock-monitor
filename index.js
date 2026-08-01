@@ -28,17 +28,27 @@ async function createMonitor(product) {
 
       break;
     } catch (err) {
-      logger.error(product.name, `Monitor crashed: ${err.message}`);
+      logger.warn(product.name, "Restarting browser...");
 
       try {
-        if (page && !page.isClosed()) {
-          await page.close();
-        }
+        await context.close();
       } catch {}
 
-      logger.warn(product.name, "Recreating tab in 10 seconds...");
+      try {
+        await browser.close();
+      } catch {}
 
-      await new Promise((resolve) => setTimeout(resolve, 10000));
+      browser = await launchBrowser();
+
+      context = await browser.newContext({
+        storageState: "browser-data/storage-state.json",
+      });
+
+      page = await context.newPage();
+
+      monitor = new Monitor(product, page, config, logger, webhook);
+
+      await monitor.initialize();
     }
   }
 }
@@ -50,6 +60,16 @@ async function createMonitor(product) {
     config.browser.profileDir,
     {
       headless: config.browser.headless,
+      args: [
+        "--disable-gpu",
+        "--disable-background-networking",
+        "--disable-sync",
+        "--disable-extensions",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-renderer-backgrounding",
+        "--disable-background-timer-throttling",
+      ],
     },
   );
 
