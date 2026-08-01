@@ -28,6 +28,20 @@ class Monitor {
       }),
     );
 
+    console.log("URL:", this.page.url());
+
+    console.log("Title:", await this.page.title());
+
+    await this.page.screenshot({
+      path: "startup.png",
+      fullPage: true,
+    });
+
+    await require("fs").promises.writeFile(
+      "startup.html",
+      await this.page.content(),
+    );
+
     this.page.setDefaultTimeout(10000);
     this.page.setDefaultNavigationTimeout(15000);
 
@@ -72,7 +86,7 @@ class Monitor {
     try {
       await input.waitFor({
         state: "visible",
-        timeout: 2000,
+        timeout: 10000,
       });
     } catch {
       return;
@@ -217,6 +231,20 @@ class Monitor {
           timeout: this.config.browser.timeout,
         }),
       );
+
+      console.log("URL:", this.page.url());
+
+      console.log("Title:", await this.page.title());
+
+      await this.page.screenshot({
+        path: "startup.png",
+        fullPage: true,
+      });
+
+      await require("fs").promises.writeFile(
+        "startup.html",
+        await this.page.content(),
+      );
     }
 
     const state = await this.withTimeout("detectState", this.detectState());
@@ -298,6 +326,20 @@ class Monitor {
               waitUntil: "domcontentloaded",
               timeout: this.config.browser.timeout,
             }),
+          );
+
+          console.log("URL:", this.page.url());
+
+          console.log("Title:", await this.page.title());
+
+          await this.page.screenshot({
+            path: "startup.png",
+            fullPage: true,
+          });
+
+          await require("fs").promises.writeFile(
+            "startup.html",
+            await this.page.content(),
           );
 
           await this.withTimeout(
