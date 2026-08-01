@@ -17,7 +17,8 @@
   "browser": {
     "headless": true,
     "profileDir": "./browser-data",
-    "timeout": 30000
+    "timeout": 30000,
+    "operationTimeout": 15000
   },
 
   "location": {
