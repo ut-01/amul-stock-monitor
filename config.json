@@ -9,7 +9,7 @@
   "monitor": {
     "startHour": 6,
     "endHour": 12,
-    "intervalMinutes": 1,
+    "intervalMinutes": 5,
     "minJitterSeconds": 5,
     "maxJitterSeconds": 8
   },
