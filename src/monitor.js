@@ -265,7 +265,7 @@ class Monitor {
   }
 
   async start() {
-    const initialDelay = Math.floor(Math.random() * 50000);
+    const initialDelay = Math.floor(Math.random() * 10000);
 
     this.logger.info(
       this.product.name,
