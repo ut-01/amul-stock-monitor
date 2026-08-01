@@ -1,6 +1,6 @@
+const { setTimeout: sleep } = require("timers/promises");
 const fs = require("fs/promises");
 const path = require("path");
-const { setTimeout: sleep } = require("timers/promises");
 
 class Monitor {
   constructor(product, page, config, logger, webhook) {
@@ -14,41 +14,21 @@ class Monitor {
   }
 
   async initialize() {
-    await fs.mkdir("logs", {
-      recursive: true,
-    });
-
     this.logger.info(this.product.name, "Opening product page...");
 
-    await this.withTimeout(
-      "goto",
-      this.page.goto(this.product.url, {
-        waitUntil: "domcontentloaded",
-        timeout: this.config.browser.timeout,
-      }),
-    );
-
-    console.log("URL:", this.page.url());
-
-    console.log("Title:", await this.page.title());
-
-    await this.page.screenshot({
-      path: "startup.png",
-      fullPage: true,
-    });
-
-    await require("fs").promises.writeFile(
-      "startup.html",
-      await this.page.content(),
-    );
-
+    // Let Playwright handle operation timeouts.
     this.page.setDefaultTimeout(10000);
     this.page.setDefaultNavigationTimeout(15000);
 
-    await this.withTimeout(
-      "ensurePincodeSelected",
-      this.ensurePincodeSelected(),
-    );
+    await this.page.goto(this.product.url, {
+      waitUntil: "domcontentloaded",
+      timeout: this.config.browser.timeout,
+    });
+
+    this.logger.info(this.product.name, `URL: ${this.page.url()}`);
+    this.logger.info(this.product.name, `Title: ${await this.page.title()}`);
+
+    await this.ensurePincodeSelected();
   }
 
   isMonitoringWindow() {
@@ -80,6 +60,33 @@ class Monitor {
     await sleep(ms);
   }
 
+  async captureDiagnostics(reason) {
+    try {
+      const dir = path.join(process.cwd(), "logs");
+
+      await fs.mkdir(dir, { recursive: true });
+
+      const stamp = Date.now();
+
+      await this.page.screenshot({
+        path: path.join(dir, `${this.product.id}-${reason}-${stamp}.png`),
+        fullPage: true,
+      });
+
+      await fs.writeFile(
+        path.join(dir, `${this.product.id}-${reason}-${stamp}.html`),
+        await this.page.content(),
+      );
+
+      this.logger.warn(this.product.name, `Captured diagnostics (${reason})`);
+    } catch (err) {
+      this.logger.warn(
+        this.product.name,
+        `Failed to capture diagnostics: ${err.message}`,
+      );
+    }
+  }
+
   async ensurePincodeSelected() {
     const input = this.page.locator("#search");
 
@@ -89,6 +96,7 @@ class Monitor {
         timeout: 10000,
       });
     } catch {
+      // Pincode popup not present.
       return;
     }
 
@@ -107,59 +115,32 @@ class Monitor {
 
     await option.click();
 
-    await this.page.waitForLoadState("domcontentloaded");
+    // Vue removes the popup without navigation.
+    await this.page.waitForTimeout(3000);
 
-    await this.page.waitForTimeout(1500);
+    await this.page
+      .waitForFunction(() => !document.querySelector("#search"), {
+        timeout: 10000,
+      })
+      .catch(() => {});
 
-    this.logger.success(this.product.name, "Pincode selected.");
-  }
+    const stillVisible = await this.page.locator("#search").count();
 
-  async captureUnknown(reason) {
-    try {
-      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    this.logger.info(
+      this.product.name,
+      `Pincode visible after click: ${stillVisible}`,
+    );
 
-      const safeName = this.product.name.replace(/[^a-z0-9]/gi, "_");
-
-      const png = path.join("logs", `${safeName}-${reason}-${ts}.png`);
-
-      const html = path.join("logs", `${safeName}-${reason}-${ts}.html`);
-
-      await this.page.screenshot({
-        path: png,
-        fullPage: true,
-      });
-
-      await fs.writeFile(html, await this.page.content(), "utf8");
-
-      this.logger.warn(this.product.name, `Captured diagnostics (${reason})`);
-    } catch (err) {
-      this.logger.warn(
-        this.product.name,
-        `Unable to capture diagnostics: ${err.message}`,
-      );
+    if (stillVisible > 0) {
+      await this.captureDiagnostics("pincode");
+      this.logger.warn(this.product.name, "Still on pincode page.");
+    } else {
+      this.logger.success(this.product.name, "Pincode selected.");
     }
-  }
-
-  async withTimeout(operation, promise) {
-    const timeout = this.config.browser.operationTimeout || 15000;
-
-    return Promise.race([
-      promise,
-      new Promise((_, reject) =>
-        setTimeout(() => {
-          reject(new Error(`${operation} timed out after ${timeout}ms`));
-        }, timeout),
-      ),
-    ]);
   }
 
   async detectState() {
     await this.page.waitForTimeout(1500);
-
-    await this.withTimeout(
-      "ensurePincodeSelected",
-      this.ensurePincodeSelected(),
-    );
 
     const body = await this.page.locator("body").innerText();
 
@@ -168,114 +149,88 @@ class Monitor {
       body.includes("Verify you are human") ||
       body.includes("Just a moment")
     ) {
-      this.logger.warn(this.product.name, "Cloudflare challenge detected.");
-
       return "challenge";
     }
 
-    const pincodeInput = await this.page.locator("#search").count();
+    const html = await this.page.content();
 
-    if (pincodeInput > 0) {
-      this.logger.warn(this.product.name, "Still on pincode page.");
-
-      await this.captureUnknown("pincode");
-
-      return "pincode";
-    }
-
-    const button = this.page.locator(
-      ".product-buttons .buttons > a[title='Add to Cart']",
-    );
-
-    if ((await button.count()) === 0) {
-      this.logger.warn(this.product.name, "Add to Cart button not found.");
-
-      await this.captureUnknown("missing-button");
-
+    if (!html.includes("product-buttons")) {
+      await this.captureDiagnostics("product-not-loaded");
       return "unknown";
     }
 
-    const soldOut = this.page.getByText("Sold Out", {
-      exact: true,
-    });
+    const addToCart = this.page.locator(
+      ".product-buttons .buttons > a[title='Add to Cart']",
+    );
 
-    const soldOutVisible = await soldOut.isVisible().catch(() => false);
+    const count = await addToCart.count();
 
-    const disabled = await button.getAttribute("disabled");
+    if (count === 0) {
+      await this.captureDiagnostics("missing-add-to-cart");
+      return "unknown";
+    }
 
-    const available = !disabled && !soldOutVisible;
+    const button = addToCart.first();
+    const isDisabled = (await button.getAttribute("disabled")) !== null;
 
-    return available ? "available" : "soldout";
+    const soldOutVisible = await this.page
+      .locator("div.alert.alert-danger")
+      .filter({ hasText: "Sold Out" })
+      .isVisible()
+      .catch(() => false);
+
+    // Available only when button is enabled and Sold Out banner is absent.
+    if (!isDisabled && !soldOutVisible) {
+      return "available";
+    }
+
+    if (isDisabled && soldOutVisible) {
+      return "soldout";
+    }
+
+    // Unexpected combination.
+    await this.captureDiagnostics("unknown-state");
+
+    return "unknown";
   }
+
   async check() {
     this.logger.info(this.product.name, "Refreshing page...");
 
-    try {
-      await this.withTimeout(
-        "reload",
-        this.page.reload({
-          waitUntil: "domcontentloaded",
-          timeout: this.config.browser.timeout,
-        }),
-      );
-    } catch (err) {
-      this.logger.warn(
-        this.product.name,
-        `Reload failed (${err.message}). Navigating directly...`,
-      );
+    await this.page.goto(this.product.url, {
+      waitUntil: "domcontentloaded",
+      timeout: this.config.browser.timeout,
+    });
 
-      await this.withTimeout(
-        "goto",
-        this.page.goto(this.product.url, {
-          waitUntil: "domcontentloaded",
-          timeout: this.config.browser.timeout,
-        }),
-      );
+    this.logger.info(this.product.name, `Current URL: ${this.page.url()}`);
 
-      console.log("URL:", this.page.url());
+    await this.ensurePincodeSelected();
 
-      console.log("Title:", await this.page.title());
-
-      await this.page.screenshot({
-        path: "startup.png",
-        fullPage: true,
-      });
-
-      await require("fs").promises.writeFile(
-        "startup.html",
-        await this.page.content(),
-      );
-    }
-
-    const state = await this.withTimeout("detectState", this.detectState());
+    const state = await this.detectState();
 
     switch (state) {
       case "available":
         this.logger.success(this.product.name, "PRODUCT AVAILABLE!");
 
+        await this.captureDiagnostics("available");
+
         await this.webhook.send(this.product);
 
-        return;
+        break;
 
       case "soldout":
         this.logger.info(this.product.name, "Sold Out");
-
-        return;
+        break;
 
       case "challenge":
         this.logger.warn(this.product.name, "Cloudflare challenge detected.");
 
-        return;
+        await this.captureDiagnostics("cloudflare");
 
-      case "pincode":
-        this.logger.warn(this.product.name, "Pincode page detected.");
+        break;
 
-        return;
-
-      case "unknown":
+      default:
         this.logger.warn(this.product.name, "Unknown page state.");
-
-        return;
     }
   }
 
@@ -292,8 +247,25 @@ class Monitor {
     return Math.round(base + jitter);
   }
 
+  async recover() {
+    this.logger.warn(this.product.name, "Recovering in 30 seconds...");
+
+    await sleep(30000);
+
+    try {
+      await this.page.goto(this.product.url, {
+        waitUntil: "domcontentloaded",
+        timeout: this.config.browser.timeout,
+      });
+
+      await this.ensurePincodeSelected();
+    } catch (err) {
+      this.logger.error(this.product.name, `Recovery failed: ${err.message}`);
+    }
+  }
+
   async start() {
-    const initialDelay = Math.floor(Math.random() * 10000);
+    const initialDelay = Math.floor(Math.random() * 50000);
 
     this.logger.info(
       this.product.name,
@@ -313,45 +285,9 @@ class Monitor {
       } catch (err) {
         this.logger.error(this.product.name, err.stack || err.message);
 
-        await this.captureUnknown("exception");
+        await this.captureDiagnostics("exception");
 
-        this.logger.warn(this.product.name, "Recovering in 30 seconds...");
-
-        await sleep(30000);
-
-        try {
-          await this.withTimeout(
-            "goto",
-            this.page.goto(this.product.url, {
-              waitUntil: "domcontentloaded",
-              timeout: this.config.browser.timeout,
-            }),
-          );
-
-          console.log("URL:", this.page.url());
-
-          console.log("Title:", await this.page.title());
-
-          await this.page.screenshot({
-            path: "startup.png",
-            fullPage: true,
-          });
-
-          await require("fs").promises.writeFile(
-            "startup.html",
-            await this.page.content(),
-          );
-
-          await this.withTimeout(
-            "ensurePincodeSelected",
-            this.ensurePincodeSelected(),
-          );
-        } catch (recoveryError) {
-          this.logger.error(
-            this.product.name,
-            `Recovery failed: ${recoveryError.message}`,
-          );
-        }
+        await this.recover();
       }
 
       const delay = this.nextDelay();
