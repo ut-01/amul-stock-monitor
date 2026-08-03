@@ -183,7 +183,7 @@ class Monitor {
     }
 
     const button = addToCart.first();
-    const isDisabled = (await button.getAttribute("disabled")) !== null;
+    const isDisabled = (await button.getAttribute("disabled")) === "true";
 
     const soldOutVisible = await this.page
       .locator("div.alert.alert-danger")
@@ -284,7 +284,7 @@ class Monitor {
   }
 
   async start() {
-    const initialDelay = Math.floor(Math.random() * 50000);
+    const initialDelay = Math.floor(Math.random() * 10000);
 
     this.logger.info(
       this.product.name,
