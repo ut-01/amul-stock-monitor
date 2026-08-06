@@ -296,6 +296,16 @@ A product is considered **available** only when all of the following conditions 
 
 Otherwise, the product is treated as unavailable.
 
+### To check in logs file search using grep
+Available
+```
+grep -i "PRODUCT AVAILABLE" <file_name.log>
+```
+Sold out
+```
+grep -i "sold out" <file_name.log>
+```
+
 ---
 
 ## Webhook Payload
